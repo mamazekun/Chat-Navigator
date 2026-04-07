@@ -1,0 +1,14 @@
+{
+  "name": "chat-question-navigator-extension",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "esbuild src/content/index.ts --bundle --format=iife --platform=browser --target=es2020 --outfile=dist/content/index.js",
+    "check": "tsc -p tsconfig.json --noEmit"
+  },
+  "devDependencies": {
+    "esbuild": "^0.28.0",
+    "typescript": "^5.9.3"
+  }
+}

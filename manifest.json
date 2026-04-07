@@ -1,0 +1,21 @@
+{
+  "manifest_version": 3,
+  "name": "Chat Question Navigator",
+  "description": "Extract user questions and provide quick navigation for long AI chat conversations.",
+  "version": "0.1.0",
+  "content_scripts": [
+    {
+      "matches": [
+        "https://chatgpt.com/*",
+        "https://chat.openai.com/*"
+      ],
+      "js": [
+        "dist/content/index.js"
+      ],
+      "css": [
+        "src/content/styles.css"
+      ],
+      "run_at": "document_idle"
+    }
+  ]
+}
