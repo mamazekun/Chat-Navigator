@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Chat Question Navigator",
-  "description": "Extract user questions and provide quick navigation for long AI chat conversations.",
-  "version": "0.1.0",
+  "description": "Extract user questions and provide quick navigation for long AI chat conversations.\n提取用户问题，并为长篇的人工智能聊天对话提供快速导航功能",
+  "version": "1.0",
   "content_scripts": [
     {
       "matches": [
