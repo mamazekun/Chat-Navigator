@@ -7,6 +7,11 @@ const chatGptUserSelectors = [
   '[data-testid="user-message"]',
 ];
 
+const geminiUserSelectors = [
+  'user-query',
+  '[data-test-id="user-query"]',
+];
+
 // ChatGPT-first adapter. Keep selectors grouped for easy future site expansion.
 const chatGptAdapter: ChatSiteAdapter = {
   name: 'chatgpt',
@@ -44,7 +49,38 @@ const chatGptAdapter: ChatSiteAdapter = {
   },
 };
 
-const adapters: ChatSiteAdapter[] = [chatGptAdapter];
+const geminiAdapter: ChatSiteAdapter = {
+  name: 'gemini',
+  matches(hostname: string): boolean {
+    return hostname === 'gemini.google.com' || hostname === 'bard.google.com';
+  },
+  isUserMessageElement(element: Element): boolean {
+    return geminiUserSelectors.some((selector) => element.matches(selector));
+  },
+  getChatContainer(doc: Document): HTMLElement | null {
+    return doc.querySelector<HTMLElement>('main') ?? doc.body;
+  },
+  getUserMessageElements(root: ParentNode): HTMLElement[] {
+    const selectorCandidates = [
+      'user-query',
+      '[data-test-id="user-query"]',
+      '[data-test-id="user-query-bubble"]',
+      '.user-query-bubble-with-background',
+      '.query-text',
+      '[aria-label^="You said"]',
+      '[aria-label^="You:"]',
+    ];
+
+    const matches = firstNonEmptyQuery(root, selectorCandidates);
+    if (matches.length === 0) {
+      return [];
+    }
+
+    return uniqueByReference(matches.map(normalizeGeminiMessageRoot));
+  },
+};
+
+const adapters: ChatSiteAdapter[] = [chatGptAdapter, geminiAdapter];
 
 function uniqueByReference(elements: HTMLElement[]): HTMLElement[] {
   return elements.filter((element, index, arr) => arr.indexOf(element) === index);
@@ -59,7 +95,7 @@ function slugify(text: string): string {
 }
 
 function buildTitle(text: string, index: number): string {
-  const collapsed = text.replace(/\s+/g, ' ').trim();
+  const collapsed = normalizeQuestionText(text);
   if (!collapsed) {
     return `Question ${index + 1}`;
   }
@@ -67,6 +103,127 @@ function buildTitle(text: string, index: number): string {
   return collapsed.length > TITLE_MAX_LENGTH
     ? `${collapsed.slice(0, TITLE_MAX_LENGTH)}...`
     : collapsed;
+}
+
+function isSpeechLabelLine(line: string): boolean {
+  return /^(?:you\s*said|you|你说)\s*(?:[:：])?$/i.test(line.trim());
+}
+
+function normalizeQuestionText(text: string): string {
+  const invisibleRemoved = text.replace(/[\u200B-\u200D\uFEFF]/g, '').replace(/\r/g, '').trim();
+  if (!invisibleRemoved) {
+    return '';
+  }
+
+  const lines = invisibleRemoved
+    .split('\n')
+    .map((line) => line.replace(/\s+/g, ' ').trim())
+    .filter(Boolean);
+
+  if (lines.length > 1 && isSpeechLabelLine(lines[0])) {
+    lines.shift();
+  }
+
+  const collapsed = lines.join(' ').replace(/\s+/g, ' ').trim();
+  return collapsed.replace(/^(?:you\s*said|you|你说)\s*(?:[:：]\s*)?/i, '').trim();
+}
+
+function extractGeminiBodyText(element: HTMLElement): string {
+  const contentCandidates = [
+    '[data-test-id="user-query-bubble"] .query-text',
+    '[data-test-id="user-query-bubble"]',
+    '.user-query-bubble-with-background .query-text',
+    '.query-text',
+    'message-content',
+  ];
+
+  for (const selector of contentCandidates) {
+    const content = element.querySelector<HTMLElement>(selector);
+    const text = content?.innerText || content?.textContent || '';
+    if (normalizeQuestionText(text)) {
+      return text;
+    }
+  }
+
+  return element.innerText || element.textContent || '';
+}
+
+function extractGeminiAttachmentTexts(element: HTMLElement): string[] {
+  const attachmentSelectors = [
+    '[data-test-id*="attachment"]',
+    '[data-test-id*="file"]',
+    '[aria-label*="attachment"]',
+    '[aria-label*="uploaded"]',
+    '[aria-label*="附件"]',
+    '[aria-label*="文件"]',
+    'mat-chip',
+  ];
+
+  const seen = new Set<string>();
+  const results: string[] = [];
+
+  attachmentSelectors.forEach((selector) => {
+    element.querySelectorAll<HTMLElement>(selector).forEach((node) => {
+      const raw = (node.innerText || node.textContent || '').trim();
+      const text = normalizeQuestionText(raw);
+      if (!text) {
+        return;
+      }
+
+      const key = text.toLowerCase();
+      if (seen.has(key)) {
+        return;
+      }
+
+      seen.add(key);
+      results.push(text);
+    });
+  });
+
+  return results;
+}
+
+function extractQuestionText(element: HTMLElement): string {
+  const adapter = getActiveAdapter();
+  if (adapter?.name === 'gemini') {
+    const bodyText = normalizeQuestionText(extractGeminiBodyText(element));
+    const attachmentTexts = extractGeminiAttachmentTexts(element);
+
+    if (attachmentTexts.length === 0) {
+      return bodyText;
+    }
+
+    if (!bodyText) {
+      return attachmentTexts.join(' ');
+    }
+
+    const missingAttachments = attachmentTexts.filter((attachment) =>
+      !bodyText.toLowerCase().includes(attachment.toLowerCase()),
+    );
+
+    if (missingAttachments.length === 0) {
+      return bodyText;
+    }
+
+    return `${missingAttachments.join(' ')} ${bodyText}`.trim();
+  }
+
+  return element.innerText || element.textContent || '';
+}
+
+function firstNonEmptyQuery(root: ParentNode, selectors: string[]): HTMLElement[] {
+  for (const selector of selectors) {
+    const matches = Array.from(root.querySelectorAll<HTMLElement>(selector));
+    if (matches.length > 0) {
+      return matches;
+    }
+  }
+
+  return [];
+}
+
+function normalizeGeminiMessageRoot(element: HTMLElement): HTMLElement {
+  return element.closest<HTMLElement>('user-query, [data-test-id="user-query"]') ?? element;
 }
 
 function resolveAdapter(hostname: string): ChatSiteAdapter | null {
@@ -101,6 +258,11 @@ export function findClosestUserMessageElement(node: Node | null): HTMLElement | 
     return null;
   }
 
+  const adapter = getActiveAdapter();
+  if (!adapter) {
+    return null;
+  }
+
   const element = node.nodeType === Node.ELEMENT_NODE
     ? (node as Element)
     : (node.parentElement as Element | null);
@@ -109,11 +271,20 @@ export function findClosestUserMessageElement(node: Node | null): HTMLElement | 
     return null;
   }
 
-  if (isUserMessageElement(element)) {
+  if (adapter.isUserMessageElement(element)) {
     return element as HTMLElement;
   }
 
-  return element.closest<HTMLElement>(chatGptUserSelectors.join(','));
+  let current = element.parentElement;
+  while (current) {
+    if (adapter.isUserMessageElement(current)) {
+      return current;
+    }
+
+    current = current.parentElement;
+  }
+
+  return null;
 }
 
 export function getChatContainer(doc: Document = document): HTMLElement {
@@ -135,7 +306,7 @@ export function getUserMessageElements(root: ParentNode = document): HTMLElement
 }
 
 export function toQuestionItem(element: HTMLElement, index: number): QuestionItem {
-  const text = element.innerText || element.textContent || '';
+  const text = extractQuestionText(element);
   const title = buildTitle(text, index);
   const id = ensureElementId(element, index, title);
 

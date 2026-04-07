@@ -7,7 +7,9 @@
     {
       "matches": [
         "https://chatgpt.com/*",
-        "https://chat.openai.com/*"
+        "https://chat.openai.com/*",
+        "https://gemini.google.com/*",
+        "https://bard.google.com/*"
       ],
       "js": [
         "dist/content/index.js"

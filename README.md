@@ -1,6 +1,6 @@
 # Chat Question Navigator
 
-一个面向长对话场景的 Chrome Extension（Manifest V3），用于在 ChatGPT 页面中提取用户提问，并提供右侧悬浮导航，帮助快速回到历史问题位置。
+一个面向长对话场景的 Chrome Extension（Manifest V3），用于在 AI 对话页面中提取用户提问，并提供右侧悬浮导航，帮助快速回到历史问题位置。
 
 当前项目是一个可运行的 MVP，重点解决两个问题：
 
@@ -9,7 +9,11 @@
 
 ## 当前能力
 
-- 仅在 `chatgpt.com` 和 `chat.openai.com` 页面注入
+- 在以下页面注入：
+  - `chatgpt.com`
+  - `chat.openai.com`
+  - `gemini.google.com`
+  - `bard.google.com`
 - 自动识别用户消息并生成问题列表
 - 在页面右侧渲染悬浮导航条与可展开面板
 - 支持按关键词过滤问题
@@ -17,6 +21,7 @@
 - 根据当前滚动位置自动高亮正在浏览的问题
 - 通过 `MutationObserver` 监听对话区变化，并以增量刷新为主、全量刷新为兜底
 - 当问题数量小于等于 1 条时自动隐藏导航
+- Gemini 场景下会清洗标题中的“你说 / You said”等前缀，并尽量合并附件名与提问正文
 
 ## 交互说明
 
@@ -38,7 +43,7 @@
 - `src/content/index.ts`
   初始化入口，负责扫描问题、挂载面板、监听滚动和 DOM 变更
 - `src/content/dom-parser.ts`
-  站点适配与问题提取逻辑，目前只实现了 ChatGPT 适配器
+  站点适配与问题提取逻辑，当前实现了 ChatGPT 和 Gemini 适配器
 - `src/content/navigation.ts`
   问题导航与当前激活项判定
 - `src/content/panel.ts`
@@ -55,7 +60,7 @@
 - 文本变化或新增节点时，尝试只更新受影响的问题项
 - 出现删除节点等结构性变化时，再执行全量刷新
 
-此外，考虑到 ChatGPT 站内跳转时可能替换对话根节点，入口文件会周期性重新确认观察目标。
+此外，考虑到对话站点站内跳转时可能替换对话根节点，入口文件会周期性重新确认观察目标。
 
 ## 本地开发
 
@@ -85,7 +90,7 @@ npm run build
 2. 开启右上角 `Developer mode`
 3. 点击 `Load unpacked`
 4. 选择当前项目根目录
-5. 打开 ChatGPT 对话页验证导航是否正常注入
+5. 打开 ChatGPT 或 Gemini 对话页验证导航是否正常注入
 
 说明：
 
@@ -95,8 +100,9 @@ npm run build
 
 ## 项目现状与限制
 
-- 当前只适配 ChatGPT，未覆盖 Claude、Gemini、豆包等站点
+- 当前已适配 ChatGPT 与 Gemini，未覆盖 Claude、豆包等站点
 - 用户消息识别依赖页面 DOM 结构与属性选择器，目标站点改版后可能需要同步调整
+- Gemini 的附件标题提取基于页面可见节点与属性选择器，不保证覆盖所有上传组件形态
 - 目前没有背景脚本、配置页、持久化存储和快捷键支持
 - README 中的能力说明应以 `src/content/` 下实际实现为准，而不是以规划功能为准
 
