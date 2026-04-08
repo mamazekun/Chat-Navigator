@@ -10,9 +10,11 @@ import {
 import { QuestionNavigator } from './navigation';
 import { QuestionPanel } from './panel';
 import { QuestionItem } from '../utils/types';
+import { canFollowUpQuestion } from './follow-up';
 
 const navigator = new QuestionNavigator();
 const questionsByElement = new Map<HTMLElement, QuestionItem>();
+const followedUpQuestionIds = new Set<string>();
 
 let observer: MutationObserver | null = null;
 let observedRoot: HTMLElement | null = null;
@@ -59,10 +61,20 @@ function syncNavigatorFromMap(): void {
   });
 
   navigator.setItems(items);
+  syncFollowedUpQuestionIds(items);
 }
 
 function render(): void {
   panel.render(navigator.getItems(), navigator.getActiveId());
+}
+
+function syncFollowedUpQuestionIds(items: QuestionItem[]): void {
+  const validIds = new Set(items.map((item) => item.id));
+  Array.from(followedUpQuestionIds).forEach((id) => {
+    if (!validIds.has(id)) {
+      followedUpQuestionIds.delete(id);
+    }
+  });
 }
 
 function fullRefreshQuestions(): void {
@@ -75,6 +87,7 @@ function fullRefreshQuestions(): void {
   });
 
   navigator.setItems(allItems);
+  syncFollowedUpQuestionIds(allItems);
   navigator.syncActiveByViewport();
   render();
 }
@@ -216,7 +229,7 @@ const panel = new QuestionPanel({
   onFollowUp: (id) => {
     const items = navigator.getItems();
     const targetItem = items.find((item) => item.id === id);
-    if (!targetItem) {
+    if (!targetItem || !canFollowUpQuestion(targetItem, followedUpQuestionIds)) {
       return;
     }
 
@@ -227,6 +240,16 @@ const panel = new QuestionPanel({
       : buildFollowUpPrompt(targetItem.text || targetItem.title, currentQuestion);
 
     setComposerText(nextValue);
+    followedUpQuestionIds.add(id);
+    render();
+  },
+  canFollowUp: (id) => {
+    const item = navigator.getItems().find((entry) => entry.id === id);
+    if (!item) {
+      return false;
+    }
+
+    return canFollowUpQuestion(item, followedUpQuestionIds);
   },
 });
 

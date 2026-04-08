@@ -3,6 +3,7 @@ import { QuestionItem } from '../utils/types';
 interface PanelCallbacks {
   onSelect: (id: string) => void;
   onFollowUp: (id: string) => void;
+  canFollowUp: (id: string) => boolean;
 }
 
 type PanelVisibilityState = 'hidden' | 'collapsed' | 'expanded' | 'closing';
@@ -141,6 +142,10 @@ export class QuestionPanel {
       }
 
       if (followUpButton) {
+        if (followUpButton.disabled) {
+          return;
+        }
+
         event.stopPropagation();
         this.callbacks.onFollowUp(id);
         return;
@@ -262,8 +267,12 @@ export class QuestionPanel {
       followUpButton.className = 'mzk-question-nav__follow-up';
       followUpButton.dataset.id = item.id;
       followUpButton.textContent = '追问';
-      followUpButton.title = '基于该问题继续追问';
+      const canFollowUp = this.callbacks.canFollowUp(item.id);
+      followUpButton.title = canFollowUp
+        ? '基于该问题继续追问'
+        : '该问题不可追问';
       followUpButton.setAttribute('aria-label', `基于该问题继续追问：${item.title}`);
+      followUpButton.disabled = !canFollowUp;
 
       row.appendChild(button);
       row.appendChild(followUpButton);

@@ -157,6 +157,19 @@
   background: #eef5ff;
 }
 
+#mzk-question-nav-shell .mzk-question-nav__follow-up:disabled {
+  border-color: #e6ebf2;
+  color: #a9b4c3 !important;
+  background: #f4f6f9;
+  cursor: not-allowed;
+}
+
+#mzk-question-nav-shell .mzk-question-nav__follow-up:disabled:hover {
+  border-color: #e6ebf2;
+  color: #a9b4c3 !important;
+  background: #f4f6f9;
+}
+
 .mzk-question-nav__empty {
   font-size: 12px;
   color: #98a2b3;
