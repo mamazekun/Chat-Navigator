@@ -2,6 +2,7 @@ import { QuestionItem } from '../utils/types';
 
 interface PanelCallbacks {
   onSelect: (id: string) => void;
+  onFollowUp: (id: string) => void;
 }
 
 type PanelVisibilityState = 'hidden' | 'collapsed' | 'expanded' | 'closing';
@@ -131,9 +132,21 @@ export class QuestionPanel {
     // Use event delegation to avoid rebinding listeners on each render.
     this.list.addEventListener('click', (event) => {
       const target = event.target as HTMLElement;
+      const followUpButton = target.closest<HTMLButtonElement>('.mzk-question-nav__follow-up');
       const button = target.closest<HTMLButtonElement>('.mzk-question-nav__item');
-      const id = button?.dataset.id;
+      const row = target.closest<HTMLElement>('.mzk-question-nav__row');
+      const id = followUpButton?.dataset.id ?? button?.dataset.id ?? row?.dataset.id;
       if (!id) {
+        return;
+      }
+
+      if (followUpButton) {
+        event.stopPropagation();
+        this.callbacks.onFollowUp(id);
+        return;
+      }
+
+      if (!button) {
         return;
       }
 
@@ -229,6 +242,10 @@ export class QuestionPanel {
     const fragment = document.createDocumentFragment();
 
     items.forEach((item) => {
+      const row = document.createElement('div');
+      row.className = 'mzk-question-nav__row';
+      row.dataset.id = item.id;
+
       const button = document.createElement('button');
       button.type = 'button';
       button.className = 'mzk-question-nav__item';
@@ -239,7 +256,18 @@ export class QuestionPanel {
 
       button.textContent = item.title;
       button.title = item.title;
-      fragment.appendChild(button);
+
+      const followUpButton = document.createElement('button');
+      followUpButton.type = 'button';
+      followUpButton.className = 'mzk-question-nav__follow-up';
+      followUpButton.dataset.id = item.id;
+      followUpButton.textContent = '追问';
+      followUpButton.title = '基于该问题继续追问';
+      followUpButton.setAttribute('aria-label', `基于该问题继续追问：${item.title}`);
+
+      row.appendChild(button);
+      row.appendChild(followUpButton);
+      fragment.appendChild(row);
     });
 
     this.list.replaceChildren(fragment);
@@ -249,7 +277,7 @@ export class QuestionPanel {
     }
 
     if (activeId) {
-      const activeItem = this.list.querySelector<HTMLElement>(`.mzk-question-nav__item[data-id="${activeId}"]`);
+      const activeItem = this.list.querySelector<HTMLElement>(`.mzk-question-nav__row[data-id="${activeId}"]`);
       activeItem?.scrollIntoView({ block: 'nearest' });
     }
   }

@@ -99,16 +99,25 @@
   overflow-y: auto;
 }
 
-.mzk-question-nav__item {
-  width: 100%;
+#mzk-question-nav-shell .mzk-question-nav__row {
+  min-height: var(--question-row-height);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+#mzk-question-nav-shell .mzk-question-nav__item {
+  flex: 1;
   min-height: var(--question-row-height);
   border: 0;
+  appearance: none;
   background: transparent;
   text-align: left;
   padding: 0 2px;
   font-size: 13px;
+  font-weight: 400 !important;
   line-height: 1.4;
-  color: #95a1b2;
+  color: #95a1b2 !important;
   cursor: pointer;
   white-space: nowrap;
   overflow: hidden;
@@ -117,13 +126,35 @@
   align-items: center;
 }
 
-.mzk-question-nav__item:hover {
-  color: #6f7f95;
+#mzk-question-nav-shell .mzk-question-nav__item:hover {
+  color: #6f7f95 !important;
 }
 
-.mzk-question-nav__item.is-active {
-  color: #2f6feb;
-  font-weight: 600;
+#mzk-question-nav-shell .mzk-question-nav__item.is-active {
+  color: #2f6feb !important;
+  font-weight: 600 !important;
+}
+
+#mzk-question-nav-shell .mzk-question-nav__follow-up {
+  flex: 0 0 auto;
+  height: 24px;
+  border: 1px solid #d7e2f0;
+  appearance: none;
+  border-radius: 999px;
+  background: #f8fbff;
+  padding: 0 10px;
+  font-size: 12px;
+  font-weight: 500 !important;
+  line-height: 1;
+  color: #5a6c85 !important;
+  cursor: pointer;
+  transition: border-color 180ms ease, color 180ms ease, background-color 180ms ease;
+}
+
+#mzk-question-nav-shell .mzk-question-nav__follow-up:hover {
+  border-color: #bfd4ff;
+  color: #2f6feb !important;
+  background: #eef5ff;
 }
 
 .mzk-question-nav__empty {

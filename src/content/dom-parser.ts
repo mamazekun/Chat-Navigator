@@ -1,6 +1,8 @@
-import { ChatSiteAdapter, QuestionItem } from '../utils/types';
+import { ChatComposerElement, ChatSiteAdapter, QuestionItem } from '../utils/types';
 
 const TITLE_MAX_LENGTH = 60;
+const questionIds = new WeakMap<HTMLElement, string>();
+let questionIdCounter = 0;
 
 const chatGptUserSelectors = [
   '[data-message-author-role="user"]',
@@ -23,6 +25,18 @@ const chatGptAdapter: ChatSiteAdapter = {
   },
   getChatContainer(doc: Document): HTMLElement | null {
     return doc.querySelector<HTMLElement>('main') ?? doc.body;
+  },
+  getComposerElement(doc: Document): ChatComposerElement | null {
+    const selectorCandidates = [
+      '#prompt-textarea',
+      '[data-testid="prompt-textarea"]',
+      '[data-testid="composer-text-input"]',
+      'form textarea',
+      'form [contenteditable="true"][role="textbox"]',
+      'form [contenteditable="true"]',
+    ];
+
+    return findFirstVisibleElement(doc, selectorCandidates);
   },
   getUserMessageElements(root: ParentNode): HTMLElement[] {
     const selectorCandidates = [
@@ -60,6 +74,17 @@ const geminiAdapter: ChatSiteAdapter = {
   getChatContainer(doc: Document): HTMLElement | null {
     return doc.querySelector<HTMLElement>('main') ?? doc.body;
   },
+  getComposerElement(doc: Document): ChatComposerElement | null {
+    const selectorCandidates = [
+      'rich-textarea [contenteditable="true"]',
+      'message-input [contenteditable="true"]',
+      'div.ql-editor[contenteditable="true"]',
+      'textarea[aria-label]',
+      'textarea',
+    ];
+
+    return findFirstVisibleElement(doc, selectorCandidates);
+  },
   getUserMessageElements(root: ParentNode): HTMLElement[] {
     const selectorCandidates = [
       'user-query',
@@ -84,6 +109,31 @@ const adapters: ChatSiteAdapter[] = [chatGptAdapter, geminiAdapter];
 
 function uniqueByReference(elements: HTMLElement[]): HTMLElement[] {
   return elements.filter((element, index, arr) => arr.indexOf(element) === index);
+}
+
+function isVisibleElement(element: HTMLElement): boolean {
+  const style = window.getComputedStyle(element);
+  if (style.display === 'none' || style.visibility === 'hidden') {
+    return false;
+  }
+
+  const rect = element.getBoundingClientRect();
+  return rect.width > 0 && rect.height > 0;
+}
+
+function findFirstVisibleElement(
+  root: ParentNode,
+  selectors: string[],
+): ChatComposerElement | null {
+  for (const selector of selectors) {
+    const matches = Array.from(root.querySelectorAll<HTMLElement>(selector));
+    const visible = matches.find((element) => isVisibleElement(element));
+    if (visible) {
+      return visible;
+    }
+  }
+
+  return null;
 }
 
 function slugify(text: string): string {
@@ -126,6 +176,136 @@ function normalizeQuestionText(text: string): string {
 
   const collapsed = lines.join(' ').replace(/\s+/g, ' ').trim();
   return collapsed.replace(/^(?:you\s*said|you|你说)\s*(?:[:：]\s*)?/i, '').trim();
+}
+
+function normalizeComposerText(text: string): string {
+  return text
+    .replace(/[\u200B-\u200D\uFEFF]/g, '')
+    .replace(/\r/g, '')
+    .trim();
+}
+
+function readGeminiContentEditableText(element: HTMLElement): string {
+  const paragraphs = Array.from(element.querySelectorAll('p'));
+  if (paragraphs.length === 0) {
+    return element.innerText || element.textContent || '';
+  }
+
+  return paragraphs
+    .map((paragraph) => {
+      const text = paragraph.innerText || paragraph.textContent || '';
+      return text === '\n' ? '' : text.replace(/\n/g, '');
+    })
+    .join('\n');
+}
+
+function getElementText(element: ChatComposerElement): string {
+  if (element instanceof HTMLTextAreaElement || element instanceof HTMLInputElement) {
+    return element.value;
+  }
+
+  if (getActiveAdapter()?.name === 'gemini' && element.classList.contains('ql-editor')) {
+    return readGeminiContentEditableText(element);
+  }
+
+  return element.innerText || element.textContent || '';
+}
+
+function setNativeValue(
+  element: HTMLTextAreaElement | HTMLInputElement,
+  value: string,
+): void {
+  const prototype = Object.getPrototypeOf(element) as HTMLTextAreaElement | HTMLInputElement;
+  const descriptor = Object.getOwnPropertyDescriptor(prototype, 'value');
+  if (descriptor?.set) {
+    descriptor.set.call(element, value);
+    return;
+  }
+
+  element.value = value;
+}
+
+function dispatchComposerEvents(element: ChatComposerElement): void {
+  if (!(element instanceof HTMLTextAreaElement || element instanceof HTMLInputElement)) {
+    element.dispatchEvent(new InputEvent('beforeinput', {
+      bubbles: true,
+      cancelable: true,
+      inputType: 'insertReplacementText',
+      data: null,
+    }));
+  }
+
+  element.dispatchEvent(new InputEvent('input', {
+    bubbles: true,
+    cancelable: true,
+    inputType: 'insertReplacementText',
+    data: null,
+  }));
+  element.dispatchEvent(new Event('change', { bubbles: true }));
+}
+
+function replaceContentEditableText(element: HTMLElement, value: string): void {
+  element.focus();
+  element.replaceChildren();
+
+  const selection = window.getSelection();
+  const range = document.createRange();
+  range.selectNodeContents(element);
+  selection?.removeAllRanges();
+  selection?.addRange(range);
+
+  let inserted = false;
+  if (typeof document.execCommand === 'function') {
+    try {
+      inserted = document.execCommand('insertText', false, value);
+    } catch {
+      inserted = false;
+    }
+  }
+
+  if (!inserted) {
+    element.textContent = value;
+  }
+
+  if (!element.textContent?.trim() && value) {
+    element.textContent = value;
+  }
+
+  const cursorRange = document.createRange();
+  cursorRange.selectNodeContents(element);
+  cursorRange.collapse(false);
+  selection?.removeAllRanges();
+  selection?.addRange(cursorRange);
+}
+
+function replaceGeminiContentEditableText(element: HTMLElement, value: string): void {
+  element.focus();
+  element.replaceChildren();
+  element.classList.toggle('ql-blank', value.length === 0);
+
+  const lines = value.split('\n');
+  lines.forEach((line) => {
+    const paragraph = document.createElement('p');
+    if (line.length > 0) {
+      paragraph.textContent = line;
+    } else {
+      paragraph.appendChild(document.createElement('br'));
+    }
+    element.appendChild(paragraph);
+  });
+
+  if (element.childNodes.length === 0) {
+    const paragraph = document.createElement('p');
+    paragraph.appendChild(document.createElement('br'));
+    element.appendChild(paragraph);
+  }
+
+  const selection = window.getSelection();
+  const range = document.createRange();
+  range.selectNodeContents(element);
+  range.collapse(false);
+  selection?.removeAllRanges();
+  selection?.addRange(range);
 }
 
 function extractGeminiBodyText(element: HTMLElement): string {
@@ -235,22 +415,15 @@ function getActiveAdapter(): ChatSiteAdapter | null {
 }
 
 function ensureElementId(element: HTMLElement, index: number, title: string): string {
-  if (element.id) {
-    return element.id;
+  const existingId = questionIds.get(element);
+  if (existingId) {
+    return existingId;
   }
 
-  const generatedId = `mzk-question-${index + 1}-${slugify(title).slice(0, 24)}`;
-  element.id = generatedId;
+  questionIdCounter += 1;
+  const generatedId = `mzk-question-${questionIdCounter}-${index + 1}-${slugify(title).slice(0, 24)}`;
+  questionIds.set(element, generatedId);
   return generatedId;
-}
-
-export function isUserMessageElement(element: Element): boolean {
-  const adapter = getActiveAdapter();
-  if (!adapter) {
-    return false;
-  }
-
-  return adapter.isUserMessageElement(element);
 }
 
 export function findClosestUserMessageElement(node: Node | null): HTMLElement | null {
@@ -306,13 +479,14 @@ export function getUserMessageElements(root: ParentNode = document): HTMLElement
 }
 
 export function toQuestionItem(element: HTMLElement, index: number): QuestionItem {
-  const text = extractQuestionText(element);
+  const text = normalizeQuestionText(extractQuestionText(element));
   const title = buildTitle(text, index);
   const id = ensureElementId(element, index, title);
 
   return {
     id,
     title,
+    text,
     element,
     index,
   };
@@ -322,6 +496,44 @@ export function buildQuestionItemsFromElements(elements: HTMLElement[]): Questio
   return elements.map((element, index) => toQuestionItem(element, index));
 }
 
-export function extractQuestions(doc: Document = document): QuestionItem[] {
-  return buildQuestionItemsFromElements(getUserMessageElements(doc));
+export function getCurrentComposerElement(doc: Document = document): ChatComposerElement | null {
+  const adapter = getActiveAdapter();
+  if (!adapter) {
+    return null;
+  }
+
+  return adapter.getComposerElement?.(doc) ?? null;
+}
+
+export function getComposerText(doc: Document = document): string {
+  const composer = getCurrentComposerElement(doc);
+  if (!composer) {
+    return '';
+  }
+
+  return normalizeComposerText(getElementText(composer));
+}
+
+export function setComposerText(value: string, doc: Document = document): boolean {
+  const composer = getCurrentComposerElement(doc);
+  const adapter = getActiveAdapter();
+  if (!composer) {
+    return false;
+  }
+
+  if (composer instanceof HTMLTextAreaElement || composer instanceof HTMLInputElement) {
+    composer.focus();
+    setNativeValue(composer, value);
+    composer.setSelectionRange(value.length, value.length);
+  } else {
+    if (adapter?.name === 'gemini') {
+      replaceGeminiContentEditableText(composer, value);
+    } else {
+      replaceContentEditableText(composer, value);
+    }
+  }
+
+  dispatchComposerEvents(composer);
+  composer.focus();
+  return true;
 }

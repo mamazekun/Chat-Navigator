@@ -1,8 +1,10 @@
 import {
   buildQuestionItemsFromElements,
   findClosestUserMessageElement,
+  getComposerText,
   getChatContainer,
   getUserMessageElements,
+  setComposerText,
   toQuestionItem,
 } from './dom-parser';
 import { QuestionNavigator } from './navigation';
@@ -198,10 +200,33 @@ function ensureObserverRoot(): void {
   });
 }
 
+function buildFollowUpPrompt(historyQuestion: string, currentQuestion: string): string {
+  return `回到刚才的问题：
+${historyQuestion}
+
+在这个基础上，我想进一步追问：
+${currentQuestion}`.trimEnd();
+}
+
 const panel = new QuestionPanel({
   onSelect: (id) => {
     navigator.jumpToId(id);
     render();
+  },
+  onFollowUp: (id) => {
+    const items = navigator.getItems();
+    const targetItem = items.find((item) => item.id === id);
+    if (!targetItem) {
+      return;
+    }
+
+    const isLatestQuestion = items[items.length - 1]?.id === id;
+    const currentQuestion = getComposerText();
+    const nextValue = isLatestQuestion
+      ? currentQuestion
+      : buildFollowUpPrompt(targetItem.text || targetItem.title, currentQuestion);
+
+    setComposerText(nextValue);
   },
 });
 
